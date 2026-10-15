@@ -2,6 +2,12 @@
 
 Show images and play videos inside the [omp](https://omp.sh) terminal.
 
+![The agent shows four landing-page directions as a 2×2 grid inside an omp card in Ghostty](docs/screenshot.png)
+
+<sub>The agent calls `show_image` with four design directions for a demo brand.
+The card shows the title, the image count, and the pixel size, with the `/img`
+actions below.</sub>
+
 When an agent builds or changes something visual, you usually switch to a
 browser or a file viewer to check the result. With this extension, the agent
 shows you the result in the conversation: screenshots, design directions,
