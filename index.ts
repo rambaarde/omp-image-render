@@ -12,7 +12,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import { type Component, Container, Image, Text, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
+import { type Component, Container, Image, type ImageBudget, Text, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import {
 	addHistory,
 	type Check,
@@ -34,10 +34,16 @@ import { imageLeftPad, VideoPlayer } from "./player";
 const IMAGE_MESSAGE = "omp-image-render.image";
 /** Rows a picture may take in the transcript before it is scaled down. */
 const TRANSCRIPT_IMAGE_ROWS = 24;
+/** Widget key used once per session to borrow the TUI; removed right after. */
+const PROBE_WIDGET = "omp-image-render.probe";
+/** The TUI's inline-image budget. One TUI per process, so one module-level handle. */
+let imageBudget: ImageBudget | undefined;
 
 /** What the image renderers need to draw a saved picture. */
 interface ImageView {
 	png: string;
+	/** Stable graphics key for this card, so a re-render replaces the picture instead of stacking a copy. */
+	key?: string;
 	title: string;
 	labels: string[];
 	version: number;
@@ -47,6 +53,8 @@ interface ImageView {
 /** What the video result renderer needs: a poster frame and the review notes. */
 interface VideoView {
 	poster: string;
+	/** Stable graphics key for this card (see ImageView.key). */
+	key?: string;
 	title: string;
 	url?: string;
 	duration: number;
@@ -80,7 +88,7 @@ class PictureCard implements Component {
 	/** Picture size in pixels; undefined when the cached PNG is gone and the body is text. */
 	#size: { widthPx: number; heightPx: number } | undefined;
 
-	constructor(theme: Fg, png: string, title: string, meta: string, footer: string) {
+	constructor(theme: Fg, png: string, key: string, title: string, meta: string, footer: string) {
 		this.#theme = theme;
 		this.#title = title;
 		this.#meta = meta;
@@ -91,7 +99,9 @@ class PictureCard implements Component {
 					fs.readFileSync(png).toString("base64"),
 					"image/png",
 					{ fallbackColor: s => theme.fg("dim", s) },
-					{ maxHeightCells: TRANSCRIPT_IMAGE_ROWS, filename: path.basename(png) },
+					// The TUI's budget gives the picture a stable kitty id: repaints move one placement
+					// and scrolled-away copies are purged. Without it every redraw left a ghost copy.
+					{ maxHeightCells: TRANSCRIPT_IMAGE_ROWS, filename: path.basename(png), budget: imageBudget, imageKey: `omp-image-render:${key}` },
 					this.#size,
 				)
 			: new Text(theme.fg("dim", "(picture no longer in cache)"), 0, 0);
@@ -128,7 +138,7 @@ function imageCard(theme: Fg, view: ImageView): PictureCard {
 	const version = view.versions > 1 ? `v${view.version} of ${view.versions}` : "";
 	const title = [theme.fg("accent", view.title), what, version].filter(Boolean).join(theme.fg("dim", " · "));
 	const size = fs.existsSync(view.png) ? pngSize(view.png) : undefined;
-	return new PictureCard(theme, view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS);
+	return new PictureCard(theme, view.png, view.key ?? view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS);
 }
 
 /** Prepare a picture, save it as a version, and return its view. */
@@ -142,7 +152,7 @@ async function showImage(cwd: string, inputPaths: string[], title: string | unde
 	trimCache();
 	const versions = versionsOf({ kind: "image", title: name });
 	const labels = compare ? ["Before", "After"] : paths.map(p => path.basename(p));
-	return { png, title: name, labels, version: versions.length, versions: versions.length };
+	return { png, key: crypto.randomUUID(), title: name, labels, version: versions.length, versions: versions.length };
 }
 
 /** Prepare a clip and save it as a version; returns the history entry. */
@@ -190,6 +200,17 @@ function openPlayer(ctx: ExtensionContext, entry: HistoryEntry): boolean {
 export default function ompImageRender(pi: ExtensionAPI) {
 	const z = pi.zod;
 	pi.setLabel("omp-image-render");
+
+	// Extensions get no TUI handle in tool renderers, so borrow it once: a widget factory runs
+	// synchronously with the TUI, then the empty widget is removed in the same tick.
+	pi.on("session_start", (_event, ctx) => {
+		if (ctx.mode !== "tui" || !ctx.hasUI) return;
+		ctx.ui.setWidget(PROBE_WIDGET, tui => {
+			imageBudget = tui.imageBudget;
+			return { render: () => [] };
+		});
+		ctx.ui.setWidget(PROBE_WIDGET, undefined);
+	});
 
 	pi.registerMessageRenderer<ImageView>(IMAGE_MESSAGE, (message, _opts, theme) =>
 		message.details ? imageCard(theme, message.details) : undefined,
@@ -268,6 +289,7 @@ export default function ompImageRender(pi: ExtensionAPI) {
 			const versions = versionsOf(entry).length;
 			const opened = openPlayer(ctx, entry);
 			const view: VideoView = {
+				key: crypto.randomUUID(),
 				poster: framePath(video, Math.min(video.frameCount - 1, Math.round((entry.changes?.[0]?.at ?? 0) * video.fps))),
 				title: entry.title,
 				url: entry.url,
@@ -304,7 +326,7 @@ export default function ompImageRender(pi: ExtensionAPI) {
 				.join(theme.fg("dim", " · "));
 			const meta = `${view.duration.toFixed(1)}s${view.url ? ` · ${view.url}` : ""}`;
 			const box = new Container();
-			box.addChild(new PictureCard(theme, view.poster, title, meta, "▶ /video replays it · /media lists every version"));
+			box.addChild(new PictureCard(theme, view.poster, view.key ?? view.poster, title, meta, "▶ /video replays it · /media lists every version"));
 			for (const c of view.changes) box.addChild(new Text(theme.fg("text", `  ◆ ${c.at.toFixed(1)}s  ${c.title}`), 0, 0));
 			for (const c of view.checks) {
 				const count = c.total !== undefined ? `  ${c.passed ?? 0}/${c.total}` : "";
@@ -380,6 +402,7 @@ export default function ompImageRender(pi: ExtensionAPI) {
 			const versions = versionsOf(entry);
 			const view: ImageView = {
 				png: entry.output,
+				key: crypto.randomUUID(),
 				title: entry.title,
 				labels: entry.compare ? ["Before", "After"] : [path.basename(entry.source)],
 				version: versions.findIndex(v => v.createdAt === entry.createdAt) + 1,
