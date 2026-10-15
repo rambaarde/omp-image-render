@@ -219,6 +219,8 @@ export default function ompImageRender(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "show_image",
 		label: "Show image",
+		// Always in the tool list, so the agent calls it directly instead of looking it up first.
+		loadMode: "essential",
 		description: [
 			"Show one or more images to the user, inline in the terminal. The user sees the picture; you receive only a confirmation.",
 			"Use this tool after you make or change something visual: a screenshot, a design, a chart, a generated image.",
@@ -249,6 +251,7 @@ export default function ompImageRender(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "show_video",
 		label: "Show video",
+		loadMode: "essential",
 		description: [
 			"Play a video to the user in a full-screen terminal player. The user sees the video; you receive only a confirmation.",
 			"Use this tool for screen recordings, Playwright test runs, animations, and ads.",
