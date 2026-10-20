@@ -45,6 +45,9 @@ text confirmation, so showing you a picture costs no model tokens.
 
 - **Inline picture card.** Each picture shows in a frame with the title, the
   image count, the version, and the pixel size. The picture is centered.
+- **Zoom popup in Herdr.** Ctrl+click a picture card title to open the
+  picture full size in a popup. Zoom with the wheel toward the pointer, and drag
+  to move. See [Zoom popup](#zoom-popup).
 - **Side by side and grids.** Two or three images show side by side. Four or
   more images form a grid.
 - **Before and after.** Give the old image or the old recording as `compare`.
@@ -278,7 +281,31 @@ kitty graphics through. To turn them on:
 
 4. Open a new pane and start omp.
 
-Herdr popup panes may not show images.
+### Zoom popup
+
+The `herdr/` folder is a Herdr plugin. With it, Ctrl+click on a picture card
+title opens the picture in a popup that can zoom. The card title is a link to
+the cached PNG; the plugin catches that link.
+
+Needs Herdr 0.9.4 or later, `bun` on `PATH`, and `ui.mouse_capture` on (the
+default). Herdr uses Ctrl+click on every platform, also on macOS.
+
+```sh
+herdr plugin link ~/path/to/omp-image-render/herdr
+```
+
+| Input | Action |
+|---|---|
+| Wheel or two-finger scroll | Zoom toward the pointer |
+| Left drag | Move the picture |
+| `+` / `-` | Zoom at the center |
+| Arrows or `h` `j` `k` `l` | Move the picture |
+| `0` | Fit the picture |
+| `o` | Open in Preview |
+| `q` or Esc | Close |
+
+The viewer sends the PNG once and crops it in the terminal (kitty source
+rectangle), so zoom shows the full resolution and nothing is re-encoded.
 
 ### tmux
 

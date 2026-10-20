@@ -11,8 +11,10 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { type Component, Container, Image, type ImageBudget, Text, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
+import { uriHyperlink } from "@oh-my-pi/pi-tui/render";
 import {
 	addHistory,
 	type Check,
@@ -78,21 +80,26 @@ const CARD_ACTIONS = "↗ /img view · /img save · /img copy";
  * rule with the actions. Side borders are left out on purpose: kitty placements draw from
  * the cursor column, so a left border would shift the picture and a right one cannot be
  * aligned to its unknown width.
+ *
+ * With `link`, the title is an OSC 8 hyperlink to that URL. Picture cards link the
+ * cached PNG, so Ctrl+click in Herdr opens the zoom popup (see `herdr/`).
  */
 class PictureCard implements Component {
 	#theme: Fg;
 	#title: string;
 	#meta: string;
 	#footer: string;
+	#link: string | undefined;
 	#body: Component;
 	/** Picture size in pixels; undefined when the cached PNG is gone and the body is text. */
 	#size: { widthPx: number; heightPx: number } | undefined;
 
-	constructor(theme: Fg, png: string, key: string, title: string, meta: string, footer: string) {
+	constructor(theme: Fg, png: string, key: string, title: string, meta: string, footer: string, link?: string) {
 		this.#theme = theme;
 		this.#title = title;
 		this.#meta = meta;
 		this.#footer = footer;
+		this.#link = link;
 		this.#size = fs.existsSync(png) ? pngSize(png) : undefined;
 		this.#body = this.#size
 			? new Image(
@@ -107,20 +114,24 @@ class PictureCard implements Component {
 			: new Text(theme.fg("dim", "(picture no longer in cache)"), 0, 0);
 	}
 
-	/** `╭─ left ──── right ─╮`-style rule; the left part is cut first when the row is narrow. */
-	#rule(width: number, open: string, close: string, left: string, right: string): string {
+	/**
+	 * `╭─ left ──── right ─╮`-style rule; the left part is cut first when the row is narrow.
+	 * `link` wraps the left part after it is cut, so a cut never drops the closing OSC 8.
+	 */
+	#rule(width: number, open: string, close: string, left: string, right: string, link?: string): string {
 		const t = this.#theme;
 		const rightPart = right ? ` ${right} ` : "";
 		const room = Math.max(0, width - 4 - visibleWidth(rightPart));
 		const leftPart = truncateToWidth(` ${left} `, room);
 		const fill = "─".repeat(Math.max(0, width - 4 - visibleWidth(leftPart) - visibleWidth(rightPart)));
-		return t.fg("dim", `${open}─`) + leftPart + t.fg("dim", fill) + t.fg("muted", rightPart) + t.fg("dim", `─${close}`);
+		const shown = link ? uriHyperlink(link, leftPart) : leftPart;
+		return t.fg("dim", `${open}─`) + shown + t.fg("dim", fill) + t.fg("muted", rightPart) + t.fg("dim", `─${close}`);
 	}
 
 	render(width: number): readonly string[] {
 		const pad = " ".repeat(this.#size ? imageLeftPad(width, this.#size, TRANSCRIPT_IMAGE_ROWS) : 0);
 		return [
-			this.#rule(width, "╭", "╮", this.#title, this.#meta),
+			this.#rule(width, "╭", "╮", this.#title, this.#meta, this.#link),
 			...this.#body.render(width).map(line => pad + line),
 			this.#rule(width, "╰", "╯", this.#theme.fg("dim", this.#footer), ""),
 		];
@@ -138,7 +149,8 @@ function imageCard(theme: Fg, view: ImageView): PictureCard {
 	const version = view.versions > 1 ? `v${view.version} of ${view.versions}` : "";
 	const title = [theme.fg("accent", view.title), what, version].filter(Boolean).join(theme.fg("dim", " · "));
 	const size = fs.existsSync(view.png) ? pngSize(view.png) : undefined;
-	return new PictureCard(theme, view.png, view.key ?? view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS);
+	const link = size ? pathToFileURL(view.png).href : undefined;
+	return new PictureCard(theme, view.png, view.key ?? view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS, link);
 }
 
 /** Prepare a picture, save it as a version, and return its view. */

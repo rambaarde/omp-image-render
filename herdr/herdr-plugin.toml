@@ -1,0 +1,36 @@
+# Herdr plugin for omp-image-render: Ctrl+click a picture card title in omp
+# to open the picture in a zoomable popup.
+#
+# The card title is an OSC 8 link to the cached PNG
+# (~/.cache/omp-image-render/p-<hash>.png). The link handler matches that URL
+# and runs the `zoom` action, which opens the `viewer` popup with the URL in
+# OMP_IMG_URL. Install: herdr plugin link <repo>/herdr
+id = "rambaarde.omp-image-render"
+name = "omp-image-render zoom"
+version = "0.1.0"
+min_herdr_version = "0.9.4"
+description = "Ctrl+click an omp picture card title to zoom the picture in a popup"
+platforms = ["macos"]
+
+[[actions]]
+id = "zoom"
+title = "Zoom omp picture"
+# The action has no terminal; it only opens the popup and hands over the URL.
+command = [
+  "sh", "-c",
+  'exec "$HERDR_BIN_PATH" plugin pane open --plugin "$HERDR_PLUGIN_ID" --entrypoint viewer --env "OMP_IMG_URL=$HERDR_PLUGIN_CLICKED_URL"',
+]
+
+[[panes]]
+id = "viewer"
+title = "Zoom"
+placement = "popup"
+width = "95%"
+height = "95%"
+command = ["bun", "zoom.ts"]
+
+[[link_handlers]]
+id = "picture"
+title = "Zoom omp picture"
+pattern = "^file://.*/\\.cache/omp-image-render/p-[0-9a-f]+\\.png$"
+action = "zoom"
