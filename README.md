@@ -294,6 +294,14 @@ default). Herdr uses Ctrl+click on every platform, also on macOS.
 herdr plugin link ~/path/to/omp-image-render/herdr
 ```
 
+omp also turns OSC 8 links off inside Herdr, so the card title is plain text
+and Ctrl+click does nothing. Force links in Herdr panes, next to the image
+protocol line in `~/.zshrc`, then open a new pane:
+
+```sh
+[[ -n $HERDR_PANE_ID ]] && export PI_FORCE_HYPERLINKS=1
+```
+
 | Input | Action |
 |---|---|
 | Wheel or two-finger scroll | Zoom toward the pointer |
@@ -306,6 +314,9 @@ herdr plugin link ~/path/to/omp-image-render/herdr
 
 The viewer sends the PNG once and crops it in the terminal (kitty source
 rectangle), so zoom shows the full resolution and nothing is re-encoded.
+
+Known limit: the viewer sends the PNG at full size. Herdr can drop a large
+image (somewhere between 560 KB and 1.4 MB), and the popup then stays blank.
 
 ### tmux
 
