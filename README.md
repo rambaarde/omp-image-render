@@ -233,7 +233,9 @@ space play/pause · ←/→ 5s · ,/. frame · 1-9 change · [/] version · o Qu
 | `compare` + video | Both recordings side by side in every frame, so they can never go out of sync. The shorter one holds its last frame. |
 
 In the conversation, a picture is at most 24 rows high and fits the width of
-the terminal.
+the terminal. The card shows a copy scaled down to about that size (at least
+1920×960 px), so the terminal gets few pixels it cannot show. The card header,
+the zoom popup, and `/img view|save|copy` use the full-size picture.
 
 ## Teach your agent to use it
 
@@ -331,6 +333,7 @@ inside tmux; see omp's `PI_KITTY_PLACEHOLDERS` setting.
 | `terminal.showImages` | Must be `true` (the default). |
 | `PI_FORCE_IMAGE_PROTOCOL` | Forces `kitty`, `iterm2`, `sixel`, or `none`. |
 | `PI_KITTY_PLACEHOLDERS` | `1` draws kitty images as Unicode placeholder cells. Try it if a multiplexer shows an empty card. |
+| `tui.maxInlineImages` | How many pictures stay live graphics (default 8). Older ones turn into text lines. A lower number reduces the load on the terminal or multiplexer. |
 
 ## Troubleshooting
 
@@ -339,7 +342,8 @@ inside tmux; see omp's `PI_KITTY_PLACEHOLDERS` setting.
 | A text line such as `[Image: p-….png [image/png] 1280x720]` | omp has images turned off for this terminal. | Use a kitty-protocol terminal. Inside a multiplexer, set `PI_FORCE_IMAGE_PROTOCOL=kitty` (see above). Start a new omp session after a change. |
 | The card frame with an empty area | omp sent the picture, but the terminal or the multiplexer dropped it. | In Herdr: enable `kitty_graphics` and re-attach the client. Else try `PI_KITTY_PLACEHOLDERS=1`. |
 | Two overlapping copies of a picture | An old version of this extension (before `e1e6b92`). | Update and start a new omp session. |
-| Older pictures turn into text lines | omp keeps a limited number of live pictures on screen (8 by default) and turns older ones into text to save terminal memory. | Expected. Use `/media` to show a picture again. |
+| Older pictures turn into text lines | omp keeps a limited number of live pictures on screen (`tui.maxInlineImages`, 8 by default) and turns older ones into text to save terminal memory. | Expected. Use `/media` to show a picture again. |
+| Typing is slow in Herdr after several pictures | Herdr's experimental kitty graphics send pictures to the outer terminal as raw pixels (4 bytes per pixel). Many large live pictures can slow each redraw. | Lower `tui.maxInlineImages` (for example to 3). |
 | `ffmpeg and ffprobe are required` | ffmpeg is not on `PATH`. | `brew install ffmpeg` (macOS) or your package manager. |
 | `/img`, `/video`, or the tools are missing | omp started before the extension was installed. | Start a new omp session. Check the link in `~/.omp/agent/extensions/`. |
 | The player did not open after `show_video` | omp runs in print or RPC mode. | Run `/video` in the interactive terminal. |
