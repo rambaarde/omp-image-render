@@ -13,11 +13,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import { type Component, Container, Image, type ImageBudget, Text, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
+import { type Component, Container, getCellDimensions, Image, type ImageBudget, Text, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import { uriHyperlink } from "@oh-my-pi/pi-tui/render";
 import {
 	addHistory,
 	type Check,
+	displayCopy,
 	framePath,
 	type HistoryEntry,
 	type Marker,
@@ -43,7 +44,10 @@ let imageBudget: ImageBudget | undefined;
 
 /** What the image renderers need to draw a saved picture. */
 interface ImageView {
+	/** Full-resolution PNG: the size in the card header, the zoom link, and `/img view|save|copy`. */
 	png: string;
+	/** Copy downscaled to the transcript size; the picture in the card. Absent in sessions saved before it existed. */
+	display?: string;
 	/** Stable graphics key for this card, so a re-render replaces the picture instead of stacking a copy. */
 	key?: string;
 	title: string;
@@ -150,7 +154,8 @@ function imageCard(theme: Fg, view: ImageView): PictureCard {
 	const title = [theme.fg("accent", view.title), what, version].filter(Boolean).join(theme.fg("dim", " · "));
 	const size = fs.existsSync(view.png) ? pngSize(view.png) : undefined;
 	const link = size ? pathToFileURL(view.png).href : undefined;
-	return new PictureCard(theme, view.png, view.key ?? view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS, link);
+	const shown = view.display && fs.existsSync(view.display) ? view.display : view.png;
+	return new PictureCard(theme, shown, view.key ?? view.png, title, size ? `${size.widthPx}×${size.heightPx}` : "", CARD_ACTIONS, link);
 }
 
 /** Prepare a picture, save it as a version, and return its view. */
@@ -164,7 +169,19 @@ async function showImage(cwd: string, inputPaths: string[], title: string | unde
 	trimCache();
 	const versions = versionsOf({ kind: "image", title: name });
 	const labels = compare ? ["Before", "After"] : paths.map(p => path.basename(p));
-	return { png, key: crypto.randomUUID(), title: name, labels, version: versions.length, versions: versions.length };
+	return { png, display: await transcriptCopy(png), key: crypto.randomUUID(), title: name, labels, version: versions.length, versions: versions.length };
+}
+
+/**
+ * The picture downscaled to what a transcript card can show: TRANSCRIPT_IMAGE_ROWS rows high
+ * and the terminal width. The floors keep a retina-sharp picture when the terminal never
+ * reports its cell size (pi-tui then assumes 9×18 px cells).
+ */
+function transcriptCopy(png: string): Promise<string> {
+	const cell = getCellDimensions();
+	const maxW = Math.max((process.stdout.columns ?? 0) * cell.widthPx, 1920);
+	const maxH = Math.max(TRANSCRIPT_IMAGE_ROWS * cell.heightPx, 960);
+	return displayCopy(png, maxW, maxH);
 }
 
 /** Prepare a clip and save it as a version; returns the history entry. */
@@ -417,6 +434,7 @@ export default function ompImageRender(pi: ExtensionAPI) {
 			const versions = versionsOf(entry);
 			const view: ImageView = {
 				png: entry.output,
+				display: await transcriptCopy(entry.output),
 				key: crypto.randomUUID(),
 				title: entry.title,
 				labels: entry.compare ? ["Before", "After"] : [path.basename(entry.source)],

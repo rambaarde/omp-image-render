@@ -161,6 +161,21 @@ export async function prepareImage(paths: string[]): Promise<string> {
 	return out;
 }
 
+/**
+ * A copy of `png` that fits in `maxW`×`maxH` pixels, for the transcript card. Herdr relays
+ * kitty images to the outer terminal as raw RGBA (4 bytes per pixel), so pixels the card
+ * cannot show still cost memory and redraw time. Returns `png` itself when it already fits.
+ */
+export async function displayCopy(png: string, maxW: number, maxH: number): Promise<string> {
+	const { widthPx, heightPx } = pngSize(png);
+	if (widthPx <= maxW && heightPx <= maxH) return png;
+	const out = png.replace(/\.png$/, `-${maxW}x${maxH}.png`);
+	if (fs.existsSync(out)) return out;
+	const fit = `scale=${maxW}:${maxH}:force_original_aspect_ratio=decrease:flags=lanczos`;
+	await run(["ffmpeg", "-v", "error", "-y", "-i", png, "-vf", fit, "-frames:v", "1", "-threads", "2", out]);
+	return out;
+}
+
 /** Pixel size of a PNG, read from its IHDR header (big-endian width at byte 16, height at 20). */
 export function pngSize(file: string): { widthPx: number; heightPx: number } {
 	const head = Buffer.alloc(24);
@@ -269,14 +284,15 @@ function sizeOf(p: string): number {
 
 /**
  * Delete cache entries older than a week, then the oldest ones until the cache is under
- * 1 GB. Only `p-*` / `v-*` entries this module created are touched; the newest two stay.
+ * 1 GB. Only `p-*` (with their transcript copies) / `v-*` entries this module created are
+ * touched; the newest two stay.
  */
 export function trimCache(): void {
 	if (!fs.existsSync(CACHE_ROOT)) return;
 	const now = Date.now();
 	const entries = fs
 		.readdirSync(CACHE_ROOT)
-		.filter(n => /^(p-[0-9a-f]{16}\.png|v-[0-9a-f]{16})$/.test(n))
+		.filter(n => /^(p-[0-9a-f]{16}(-\d+x\d+)?\.png|v-[0-9a-f]{16})$/.test(n))
 		.map(n => {
 			const p = path.join(CACHE_ROOT, n);
 			return { p, mtime: fs.lstatSync(p).mtimeMs, size: sizeOf(p) };
